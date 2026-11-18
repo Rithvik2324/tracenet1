@@ -13,6 +13,8 @@ dist/
 # Hardhat
 artifacts/
 cache/
+.hardhat-global/
+.hardhat-local/
 typechain/
 coverage/
 
@@ -20,11 +22,6 @@ coverage/
 .env
 .env.*
 .env.local
-
-# Local DB / sqlite
-*.sqlite
-*.sqlite-journal
-supplychain.sqlite
 
 # Logs
 logs/
@@ -49,3 +46,7 @@ tempfiles/*
 
 #Public foler
 frontend/public/bgmount.jpg
+
+# Local audit browser profile
+.audit-chrome-profile/
+.audit-admin-token

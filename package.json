@@ -6,6 +6,12 @@
     "compile": "npx hardhat compile",
     "node": "npx hardhat node --hostname 127.0.0.1",
     "indexer": "node indexer.js",
+    "api": "node tracenet-api.js",
+    "seed": "node scripts/seed-demo.js",
+    "test:reliability": "node scripts/reliability-regression.cjs",
+    "frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "start": "node tracenet-api.js",
     "demo": "npx hardhat run scripts/demoFlow.js --network localhost",
     "deploy": "npx hardhat run scripts/deploy.js --network localhost"
   },
@@ -13,15 +19,18 @@
     "@nomiclabs/hardhat-ethers": "^2.2.2",
     "@nomiclabs/hardhat-waffle": "^2.0.3",
     "ethers": "5.8.0",
-    "hardhat": "^2.22.10"
+    "hardhat": "^2.22.10",
+    "solc": "0.8.15"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.24.5",
     "node-fetch": "^2.6.12",
-    "qrcode.react": "^4.2.0",
-    "sqlite3": "^5.1.6"
+    "qrcode.react": "^4.2.0"
   }
 }

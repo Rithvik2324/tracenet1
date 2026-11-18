@@ -1,103 +1,79 @@
-import Image from "next/image";
+﻿"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const nav = ["Overview", "Shipments", "Products", "RFID Simulator", "Blockchain", "Devices", "Users", "Audit log"];
+const money = (n) => new Intl.NumberFormat("en-IN").format(n || 0);
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [token, setToken] = useState("");
+  const [user, setUser] = useState(null);
+  const [section, setSection] = useState("Overview");
+  const [data, setData] = useState({ summary: {}, shipments: [], products: [], devices: [], transactions: [], events: [] });
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [tracking, setTracking] = useState("");
+  const [publicResult, setPublicResult] = useState(null);
+  const [audit, setAudit] = useState([]);
+  const [users, setUsers] = useState([]);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+  async function request(path, options = {}) {
+    const response = await fetch(`${API}${path}`, { ...options, headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) } });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || body.message || `Request failed (${response.status})`);
+    return body;
+  }
+  async function refresh() {
+    try { const next = await request("/api/dashboard"); setData(next); if (user?.role === "ADMIN") setAudit(await request("/api/audit")); }
+    catch (e) { setMessage(e.message); }
+  }
+  useEffect(() => {
+    const saved = localStorage.getItem("tracenet-token");
+    const savedUser = localStorage.getItem("tracenet-user");
+    if (saved && savedUser) { setToken(saved); setUser(JSON.parse(savedUser)); }
+  }, []);
+  useEffect(() => { if (token) refresh(); }, [token]);
+  useEffect(() => { if (token && user?.role === "ADMIN" && section === "Users") request("/api/auth/users").then(setUsers).catch(e => setMessage(e.message)); }, [token, user, section]);
+  async function login(e) {
+    e.preventDefault(); setBusy(true); setMessage("");
+    const form = new FormData(e.currentTarget);
+    try { const result = await request("/api/auth/login", { method: "POST", body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) }); setToken(result.token); setUser(result.user); localStorage.setItem("tracenet-token", result.token); localStorage.setItem("tracenet-user", JSON.stringify(result.user)); }
+    catch (err) { setMessage(err.message); } finally { setBusy(false); }
+  }
+  function logout() { localStorage.removeItem("tracenet-token"); localStorage.removeItem("tracenet-user"); setToken(""); setUser(null); setData({ summary: {}, shipments: [], products: [], devices: [], transactions: [], events: [] }); }
+  async function act(fn, success) { setBusy(true); setMessage(""); try { const result = await fn(); await refresh(); setMessage(typeof result === "string" ? result : success); } catch (e) { setMessage(e.message); } finally { setBusy(false); } }
+  async function verifyEvent(eventId, tamper = false) { try { const result = await request(tamper ? `/api/blockchain/tamper-demo/${eventId}` : `/api/blockchain/verify/${eventId}`, tamper ? { method: "POST" } : {}); setMessage(`${tamper ? "Tamper test" : "Chain verification"}: ${result.status}`); } catch (e) { setMessage(e.message); } }
+
+  if (!user) return <main className="login-shell"><div className="login-card"><div className="brand-mark">T</div><p className="eyebrow">SUPPLY CHAIN INTELLIGENCE</p><h1>Welcome to TraceNet</h1><p className="muted">Sign in to monitor shipments, capture checkpoint scans and verify chain of custody.</p><form onSubmit={login} className="stack"><label>Email address<input name="email" type="email" defaultValue="admin@tracenet.com" required /></label><label>Password<input name="password" type="password" defaultValue="Admin@123" required /></label><button className="primary" disabled={busy}>{busy ? "Signing inâ€¦" : "Sign in"}<span>â†’</span></button></form>{message && <div className="alert error">{message}</div>}<div className="login-foot">Development demo Â· admin@tracenet.com / Admin@123</div></div><div className="login-aside"><div className="globe">â—‰</div><p className="eyebrow">TRACK WITH CONFIDENCE</p><h2>Every handoff,<br/>accounted for.</h2><p>IoT checkpoints and blockchain proofs keep every shipmentâ€™s story verifiable from origin to destination.</p><div className="aside-stats"><span>LIVE TRACKING</span><span>IMMUTABLE PROOFS</span><span>GLOBAL ROUTES</span></div></div></main>;
+
+  const shipments = data.shipments || [];
+  const products = data.products || [];
+  const summary = data.summary || {};
+  const filtered = shipments.filter((s) => `${s.shipmentId} ${s.trackingId} ${s.productName} ${s.source} ${s.destination}`.toLowerCase().includes(search.toLowerCase()));
+  const selected = shipments.find((s) => s.shipmentId === tracking || s.trackingId === tracking);
+  const statusCounts = ["CREATED", "READY_FOR_PICKUP", "IN_TRANSIT", "ARRIVED_AT_CHECKPOINT", "OUT_FOR_DELIVERY", "DELIVERED", "DELAYED", "CANCELLED"].map(status => ({ status, count: shipments.filter(s => s.status === status).length }));
+
+  return <div className="app-shell"><aside className="sidebar"><a className="brand" href="#"><span className="brand-mark small">T</span><span>tracenet<small>LOGISTICS INTELLIGENCE</small></span></a><div className="org"><div className="org-icon">N</div><div><b>Northstar Logistics</b><small>Enterprise workspace</small></div><span className="chev">âŒ„</span></div><p className="nav-label">WORKSPACE</p><nav>{nav.filter(item => user.role === "ADMIN" || !["Devices", "Users", "Audit log"].includes(item)).map((item, i) => <button key={item} className={section === item ? "nav-item active" : "nav-item"} onClick={() => setSection(item)}><span>{["â–¦", "â–£", "â—‡", "â—‰", "â¬¡", "âŒ", "â˜º", "â‰¡"][i]}</span>{item}{item === "RFID Simulator" && <i className="live-dot"/>}</button>)}</nav><div className="sidebar-bottom"><div className="help-card"><div>â—Œ</div><b>Need a hand?</b><p>Visit the documentation for setup and troubleshooting.</p><a href="/verify">Open public tracking â†—</a></div><div className="profile"><div className="avatar">{user.name?.[0] || "A"}</div><div><b>{user.name || "TraceNet Admin"}</b><small>{user.role || "ADMIN"}</small></div><button onClick={logout} title="Sign out">â†—</button></div></div></aside>
+    <main className="main"><header className="topbar"><div className="crumb">Workspace <span>/</span> <b>{section}</b></div><div className="top-actions"><span className="health"><i/> All systems operational</span><div className="avatar tiny">{user.name?.[0] || "A"}</div></div></header>
+      <div className="content"><div className="welcome-row"><div><p className="eyebrow">WEDNESDAY, NOVEMBER 18, 2026 <span>Â·</span> OPERATIONS OVERVIEW</p><h1>{section === "Overview" ? "Good morning" : section}<span className="wave">{section === "Overview" ? ", " + (user.name?.split(" ")[0] || "there") : ""}</span></h1><p className="muted">Hereâ€™s whatâ€™s happening across your supply chain today.</p></div>{user.role==="ADMIN"&&<button className="primary" onClick={() => setSection("Shipments")}>ï¼‹ Create shipment</button>}</div>
+      {message && <div className="alert" onClick={() => setMessage("")}>{message}<button>Ã—</button></div>}
+      <div className="stat-grid">{[["Total products", summary.totalProducts, "◇", "Registered products"],["Total shipments", summary.totalShipments, "▣", "Across all routes"],["Active shipments", summary.activeShipments, "↗", "In progress"],["Delivered shipments", summary.delivered, "✓", "Successfully delivered"],["Delayed shipments", summary.delayed, "◷", "Need attention"],["Tracking events", summary.totalEvents, "≡", "Recorded checkpoints"],["Confirmed anchors", summary.verifiedEvents, "⬡", "On chain"],["Pending anchors", summary.pendingAnchors, "?", "Waiting for chain"],["Failed anchors", summary.failedAnchors, "!", "Require retry"]].map(([title,value,icon,desc])=><article className="stat-card" key={title}><div className="stat-head"><span>{title}</span><i>{icon}</i></div><strong>{money(value)}</strong><small className="muted">{desc}</small></article>)}</div>
+      <section className="panel chart-panel"><div className="panel-head"><div><h2>Shipment status</h2><p>Live counts from assigned MongoDB shipments</p></div></div><div className="status-chart">{statusCounts.map(row=><div className="status-bar-row" key={row.status}><span>{row.status.replaceAll("_"," ")}</span><div className="status-bar-track"><i style={{width:`${shipments.length ? row.count / shipments.length * 100 : 0}%`}} /></div><b>{money(row.count)}</b></div>)}</div>{!shipments.length&&<div className="empty">No shipment data available for this account.</div>}</section>
+      <div className="section-grid"><section className="panel shipments-panel"><div className="panel-head"><div><h2>Recent shipments</h2><p>Live visibility across your logistics network</p></div><button className="text-button" onClick={()=>setSection("Shipments")}>View all shipments <span>â†’</span></button></div><div className="table-tools"><div className="search-box">âŒ• <input placeholder="Search shipmentsâ€¦" value={search} onChange={e=>setSearch(e.target.value)}/></div></div><div className="table-wrap"><table><thead><tr><th>SHIPMENT</th><th>ROUTE</th><th>STATUS</th><th>ETA</th><th>VERIFICATION</th><th></th></tr></thead><tbody>{filtered.slice(0,6).map((s,i)=><tr key={s.shipmentId}><td><b>{s.shipmentId}</b><small>{s.productName || s.trackingId}</small></td><td><span className="route">{s.source || "Origin"} <em>â†’</em> {s.destination || "Destination"}</span><small>{(s.checkpoints||[]).length} checkpoints</small></td><td><span className={`badge ${String(s.status).toLowerCase()}`}>{(s.status||"CREATED").replaceAll("_"," ")}</span></td><td>{s.eta ? new Date(s.eta).toLocaleDateString() : "â€”"}<small>{s.eta ? "On schedule" : "No estimate"}</small></td><td><span className="verified">â— {s.verification || "Pending"}</span></td><td><button className="more" onClick={()=>{setTracking(s.trackingId);setSection("Shipments")}}>â€¢â€¢â€¢</button></td></tr>)}</tbody></table>{!filtered.length&&<div className="empty">No shipments yet. Create your first shipment to begin tracking.</div>}</div><div className="panel-foot">Showing {Math.min(6,filtered.length)} of {shipments.length} shipments <button onClick={()=>setSection("Shipments")}>View shipments â†’</button></div></section>
+      <section className="panel activity-panel"><div className="panel-head"><div><h2>Live activity</h2><p>Recent events from your network</p></div><span className="live-pill"><i/> LIVE</span></div><div className="activity-list">{(data.events||[]).slice(0,5).map((e,i)=><div className="activity" key={e.eventId||i}><div className={`activity-icon tone-${i%4}`}>{e.anchorStatus==="CONFIRMED"?"â¬¡":"âŒ"}</div><div className="activity-copy"><b>{e.location || e.eventType || "Tracking event"}</b><p>{e.shipmentId} Â· {e.deviceId || "RFID checkpoint"}</p><small>{e.createdAt ? new Date(e.createdAt).toLocaleString() : "Recent event"}</small></div><span className={e.anchorStatus==="CONFIRMED"?"mini-check":"mini-pending"}>{e.anchorStatus==="CONFIRMED"?"âœ“":"â—·"}</span></div>)}{!(data.events||[]).length&&<div className="empty compact">No recent scans. Use the RFID simulator to record a checkpoint.</div>}</div><button className="activity-link" onClick={()=>setSection("RFID Simulator")}>Open RFID simulator <span>â†’</span></button></section></div>
+
+      {section !== "Overview" && <section className="panel module-panel"><div className="panel-head"><div><h2>{section === "Shipments" ? "Shipment operations" : section}</h2><p>Manage your network with live data.</p></div></div>
+        {section === "Shipments" && <div className="module-columns">{user.role === "ADMIN" && <div><h3>Create shipment</h3><form className="module-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act(()=>request("/api/shipments",{method:"POST",body:JSON.stringify({shipmentId:f.get("shipmentId"),trackingId:f.get("trackingId"),productId:f.get("productId"),source:f.get("source"),destination:f.get("destination"),checkpoints:String(f.get("checkpoints")).split(",").map(x=>x.trim()).filter(Boolean)})}),"Shipment created");e.currentTarget.reset();}}><input name="shipmentId" placeholder="Shipment ID Â· e.g. TRC-101" required/><input name="trackingId" placeholder="Tracking ID" required/><select name="productId" required><option value="">Choose product</option>{products.map(p=><option value={p.productId} key={p.productId}>{p.productId} Â· {p.name}</option>)}</select><div className="two"><input name="source" placeholder="Origin" required/><input name="destination" placeholder="Destination" required/></div><input name="checkpoints" placeholder="Route stops, comma separated"/><button className="primary" disabled={busy}>Create shipment â†’</button></form></div>}<div><h3>Track a shipment</h3><div className="track-form"><input value={tracking} onChange={e=>setTracking(e.target.value)} placeholder="Shipment or tracking ID"/><button className="primary" onClick={async()=>{try{setPublicResult((await request(`/api/public/track/${encodeURIComponent(tracking)}`)).shipment);}catch(e){setMessage(e.message)}}}>Track</button></div>{(publicResult||selected)&&<div className="tracking-result"><b>{(publicResult||selected).shipmentId}</b><p>{(publicResult||selected).source} â†’ {(publicResult||selected).destination}</p><span className="badge in_transit">{(publicResult||selected).status}</span><div className="route-steps">{((publicResult||selected).checkpoints||[]).map((c,i)=><div key={i}><i className={c.scanned?"done":""}/><span>{c.location || c}</span><small>{c.scanned?"Scanned":"Upcoming"}</small></div>)}</div><h4>Tracking history</h4>{data.events.filter(e=>e.shipmentId===(publicResult||selected).shipmentId).map(e=><p key={e.eventId}>{e.location} ? {new Date(e.createdAt).toLocaleString()} ? {e.anchorStatus}</p>)}</div>}</div></div>}
+        {section === "Shipments" && <section className="panel"><h3>Shipment register</h3><div className="table-wrap"><table><thead><tr><th>SHIPMENT</th><th>ROUTE</th><th>STATUS</th><th>ETA</th><th>DETAILS</th></tr></thead><tbody>{filtered.map(s=><tr key={s.shipmentId}><td><b>{s.shipmentId}</b><small>{s.trackingId} · {s.productName}</small></td><td>{s.source} → {s.destination}</td><td>{user.role==="ADMIN"?<select aria-label={`Status ${s.shipmentId}`} value={s.status} onChange={e=>act(()=>request(`/api/shipments/${s.shipmentId}`,{method:"PATCH",body:JSON.stringify({status:e.target.value})}),"Shipment status updated")}><option>{s.status}</option>{({CREATED:["READY_FOR_PICKUP","CANCELLED"],READY_FOR_PICKUP:["IN_TRANSIT","DELAYED","CANCELLED"],IN_TRANSIT:["ARRIVED_AT_CHECKPOINT","OUT_FOR_DELIVERY","DELAYED","CANCELLED","DELIVERED"],ARRIVED_AT_CHECKPOINT:["IN_TRANSIT","OUT_FOR_DELIVERY","DELAYED","CANCELLED","DELIVERED"],OUT_FOR_DELIVERY:["DELIVERED","DELAYED","CANCELLED"],DELAYED:["IN_TRANSIT","CANCELLED"],DELIVERED:[],CANCELLED:[]})[s.status]?.map(v=><option key={v}>{v}</option>)}</select>:<span className={`badge ${String(s.status).toLowerCase()}`}>{s.status}</span>}</td><td>{s.eta?new Date(s.eta).toLocaleDateString():"Not set"}{user.role==="ADMIN"&&<button className="text-button" onClick={()=>{const eta=window.prompt("ETA (YYYY-MM-DD)",s.eta?new Date(s.eta).toISOString().slice(0,10):"");if(eta)act(()=>request(`/api/shipments/${s.shipmentId}`,{method:"PATCH",body:JSON.stringify({eta})}),"ETA updated")}}>Edit ETA</button>}</td><td><button className="text-button" onClick={()=>{setTracking(s.trackingId);setPublicResult(null)}}>View timeline</button></td></tr>)}</tbody></table>{!filtered.length&&<div className="empty">No shipments match this search.</div>}</div>{selected&&<div className="tracking-result"><h3>{selected.shipmentId} timeline</h3><p>{selected.source} → {selected.destination} · {selected.status}</p>{selected.checkpoints.map(c=><p key={c.sequence}>{c.sequence+1}. {c.location} — {c.scanned?"Scanned":"Pending"}</p>)}{data.events.filter(e=>e.shipmentId===selected.shipmentId).map(e=><p key={e.eventId}>{e.location} · {new Date(e.createdAt).toLocaleString()} · {e.anchorStatus}</p>)}</div>}</section>}
+        {section === "Products" && <div className="module-columns">{user.role === "ADMIN" && <div><h3>Register product</h3><form className="module-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act(()=>request("/api/products",{method:"POST",body:JSON.stringify({productId:f.get("productId"),name:f.get("name"),rfidTag:f.get("rfidTag"),category:f.get("category"),description:f.get("description")})}),"Product registered");e.currentTarget.reset()}}><input name="productId" placeholder="Product ID Â· PRD-101" required/><input name="name" placeholder="Product name" required/><input name="rfidTag" placeholder="RFID tag Â· TAG-101" required/><input name="category" placeholder="Category"/><textarea name="description" placeholder="Description"/><button className="primary">Add product â†’</button></form></div>}<div><h3>Product catalog <span className="count">{products.length}</span></h3>{products.filter(p=>`${p.productId} ${p.name} ${p.rfidTag}`.toLowerCase().includes(search.toLowerCase())).map(p=><div className="record-row" key={p.productId}><div className="product-icon">â—‡</div><div><b>{p.name}</b><small>{p.productId} Â· {p.rfidTag}</small></div><span className="badge delivered">{p.status || "AVAILABLE"}</span>{user.role==="ADMIN"&&<button className="text-button" onClick={()=>{const name=window.prompt("Product name",p.name);if(name)act(()=>request(`/api/products/${p.productId}`,{method:"PATCH",body:JSON.stringify({name})}),"Product updated")}}>Edit</button>}</div>)}</div></div>}
+        {section === "RFID Simulator" && <div className="simulator"><div className="sim-icon">â—‰</div><div className="sim-content"><h3>Checkpoint scan simulator</h3><p>Submit a simulated RFID read. The API validates the device, tag and next route stop, then stores an append-only event and queues its hash for blockchain anchoring.</p><form className="scan-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act(async()=>{const scan=await request("/api/scans",{method:"POST",body:JSON.stringify({rfidTag:f.get("rfidTag"),deviceId:f.get("deviceId"),checkpoint:f.get("checkpoint")})});let result="PENDING";for(let i=0;i<10;i++){await new Promise(r=>setTimeout(r,300));const proof=await request(`/api/blockchain/verify/${scan.event.eventId}`);result=proof.status;if(!["NOT_ANCHORED","UNAVAILABLE"].includes(result))break;}return `Event recorded Â· blockchain ${result}`},"Scan queued for anchoring");e.currentTarget.reset()}}><input name="rfidTag" defaultValue="TAG-100" placeholder="RFID tag" required/><select name="deviceId" required><option value="">Select device</option>{(data.devices||[]).map(d=><option key={d.deviceId}>{d.deviceId}</option>)}</select><input name="checkpoint" placeholder="Next checkpoint" required/><button className="primary" disabled={busy}>â—‰ Scan RFID</button></form></div></div>}
+        {section === "Blockchain" && <div className="table-wrap"><table><thead><tr><th>EVENT</th><th>SHIPMENT</th><th>STATUS</th><th>TRANSACTION</th><th>BLOCK</th><th>ACTIONS</th></tr></thead><tbody>{(data.transactions||[]).map(t=><tr key={t.eventId}><td>{t.eventId}</td><td>{t.shipmentId}</td><td><span className={`badge ${String(t.status).toLowerCase()}`}>{t.status}</span></td><td className="mono">{t.txHash || "â€”"}</td><td>{t.blockNumber || "â€”"}</td><td><button className="text-button" onClick={()=>verifyEvent(t.eventId)}>Verify</button>{user.role==="ADMIN"&&<button className="text-button" onClick={()=>verifyEvent(t.eventId,true)}>Tamper demo</button>}{user.role==="ADMIN"&&t.status==="FAILED"&&<button className="text-button" onClick={()=>act(()=>request(`/api/blockchain/retry/${t.eventId}`,{method:"POST"}),"Retry queued")}>Retry</button>}</td></tr>)}</tbody></table>{!(data.transactions||[]).length&&<div className="empty">No blockchain transactions yet.</div>}</div>}
+        {section === "Devices" && <><div className="device-grid">{(data.devices||[]).map(d=><div className="device-card" key={d.deviceId}><span className="device-symbol">âŒ</span><div><b>{d.name || d.deviceId}</b><small>{d.deviceId} Â· {d.location || "Checkpoint device"}</small></div><span className={`badge ${String(d.status).toLowerCase()}`}>{d.status || "ACTIVE"}</span>{user.role==="ADMIN"&&<button className="text-button" onClick={()=>act(()=>request(`/api/devices/${d.deviceId}`,{method:"PATCH",body:JSON.stringify({status:d.status==="ACTIVE"?"INACTIVE":"ACTIVE"})}),"Device status updated")}>{d.status==="ACTIVE"?"Disable":"Enable"}</button>}</div>)}</div>{user.role==="ADMIN"&&<form className="module-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act(()=>request("/api/devices",{method:"POST",body:JSON.stringify({deviceId:f.get("deviceId"),name:f.get("name"),location:f.get("location"),secret:f.get("secret")})}),"Device registered");e.currentTarget.reset()}}><h3>Register reader</h3><input name="deviceId" placeholder="Device ID" required/><input name="name" placeholder="Reader name" required/><input name="location" placeholder="Location"/><input name="secret" type="password" placeholder="Device secret" required/><button className="primary">Register device</button></form>}</>}
+        {section === "Users" && user.role === "ADMIN" && <div className="module-columns"><div><h3>Create operator</h3><form className="module-form" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);act(()=>request("/api/auth/users",{method:"POST",body:JSON.stringify({name:f.get("name"),email:f.get("email"),password:f.get("password"),role:"OPERATOR"})}),"Operator created");e.currentTarget.reset()}}><input name="name" placeholder="Full name" required/><input name="email" type="email" placeholder="Email" required/><input name="password" type="password" minLength="8" placeholder="Temporary password" required/><button className="primary">Create operator</button></form></div><div><h3>Team accounts</h3>{users.map(account=><div className="record-row" key={account._id}><div><b>{account.name}</b><small>{account.email}</small></div><span className="badge delivered">{account.role}</span></div>)}{!users.length&&<div className="empty">No user accounts found.</div>}</div></div>}
+        {section === "Audit log" && <div className="table-wrap"><table><thead><tr><th>TIME</th><th>ACTION</th><th>ACTOR</th><th>DETAILS</th></tr></thead><tbody>{audit.map(e=><tr key={e._id}><td>{e.createdAt?new Date(e.createdAt).toLocaleString():"â€”"}</td><td>{e.action}</td><td>{e.actor}</td><td>{e.details}</td></tr>)}</tbody></table>{!audit.length&&<div className="empty">No audit records.</div>}</div>}
+      </section>}
+      <footer className="footer"><span>Â© 2026 TraceNet Logistics Intelligence</span><span><i/> Blockchain node connected <b>Â·</b> API healthy</span></footer></div></main>
+  </div>;
 }

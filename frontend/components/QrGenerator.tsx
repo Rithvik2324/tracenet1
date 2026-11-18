@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import QRCode from 'qrcode.react';
+import { QRCodeCanvas } from 'qrcode.react';
 
 export default function QrGenerator({ batchId }: { batchId: string }) {
   const [show, setShow] = useState(false);
@@ -13,7 +13,7 @@ export default function QrGenerator({ batchId }: { batchId: string }) {
       </button>
       {show && (
         <div className="mt-3 p-3 bg-white rounded shadow-sm inline-block">
-          <QRCode value={url} size={220} />
+          <QRCodeCanvas value={url} size={220} />
           <div className="text-xs mt-2">Scan this QR or download & share</div>
           <a className="block text-sm mt-2" href={url} target="_blank" rel="noreferrer">Open link</a>
         </div>

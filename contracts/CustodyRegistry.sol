@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.15;
 
 /// @title CustodyRegistry - Minimal on-chain custody + sensor anchors
 contract CustodyRegistry {
@@ -8,12 +8,34 @@ contract CustodyRegistry {
     event BatchRegistered(bytes32 indexed batchId, string ipfsCid, address indexed manufacturer, uint256 time);
     event CustodyTransferred(bytes32 indexed batchId, address indexed from, address indexed to, uint256 time);
     event SensorAnchored(bytes32 indexed batchId, bytes32 readingHash, address indexed signer, uint256 time);
+    event ShipmentEventAnchored(string shipmentId, string eventId, bytes32 eventHash, uint256 time);
+
+    mapping(address => bool) public authorizedAnchorer;
+    mapping(string => bytes32) private shipmentEventHashes;
 
     // simple mapping of current custodian (optional)
     mapping(bytes32 => address) public currentCustodian;
 
     constructor() {
         owner = msg.sender;
+        authorizedAnchorer[msg.sender] = true;
+    }
+
+    function setAnchorer(address account, bool allowed) external onlyOwner {
+        authorizedAnchorer[account] = allowed;
+    }
+
+    function anchorEvent(string calldata shipmentId, string calldata eventId, bytes32 eventHash) external {
+        require(authorizedAnchorer[msg.sender], "anchorer only");
+        require(bytes(shipmentId).length > 0 && bytes(eventId).length > 0, "empty identifier");
+        require(eventHash != bytes32(0), "empty hash");
+        require(shipmentEventHashes[eventId] == bytes32(0), "event already anchored");
+        shipmentEventHashes[eventId] = eventHash;
+        emit ShipmentEventAnchored(shipmentId, eventId, eventHash, block.timestamp);
+    }
+
+    function getEventHash(string calldata eventId) external view returns (bytes32) {
+        return shipmentEventHashes[eventId];
     }
 
     modifier onlyOwner() {

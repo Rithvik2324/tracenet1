@@ -80,10 +80,9 @@ export default function QRScanner({ scanning, onScanResult, onScanError, stopSca
       if (readerRef.current) {
         console.log('Resetting ZXing reader...');
         try {
-          // First try to reset the reader
-          readerRef.current.reset();
-          
-          // Then try to release any resources it might be holding
+          // Release decoder resources using the supported ZXing controls.
+          // Decoding controls are returned by decodeFromConstraints and the
+          // video tracks below are stopped directly during cleanup.
           // @ts-ignore - Accessing internal property to ensure cleanup
           if (readerRef.current.reader && typeof readerRef.current.reader.reset === 'function') {
             // @ts-ignore

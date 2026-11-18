@@ -72,7 +72,6 @@ export default function VerifyClient() {
               val = parts[parts.length - 1] || val;
             }
           } catch (_) {}
-          try { codeReader.reset(); } catch (_) {}
           stopScanner();
 
           if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -86,7 +85,7 @@ export default function VerifyClient() {
       setError("Camera / permission error: " + (err.message || err));
       setScanning(false);
       if (codeReaderRef.current) {
-        try { codeReaderRef.current.reset(); } catch (_) {}
+        // Video tracks are released in stopScanner; ZXing reader has no reset API.
       }
     }
   }
@@ -94,7 +93,6 @@ export default function VerifyClient() {
   function stopScanner() {
     setScanning(false);
     if (codeReaderRef.current) {
-      try { codeReaderRef.current.reset(); } catch(_) {}
       codeReaderRef.current = null;
     }
     try {
