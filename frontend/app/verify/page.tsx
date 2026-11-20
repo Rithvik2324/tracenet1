@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useEffect } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -8,6 +9,7 @@ export default function PublicTracking() {
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [proofs, setProofs] = useState<Record<string, any>>({});
 
   async function track(e: any) {
     e.preventDefault();
@@ -19,6 +21,8 @@ export default function PublicTracking() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Shipment not found");
       setResult(data);
+      const checks = await Promise.all((data.events || []).map(async (event: any) => { try { const response = await fetch(`${API}/api/public/verify/${encodeURIComponent(event.eventId)}`); return [event.eventId, response.ok ? await response.json() : { status: "PENDING" }]; } catch { return [event.eventId, { status: "PENDING" }]; } }));
+      setProofs(Object.fromEntries(checks));
     } catch (error: any) {
       setError(error.message);
     } finally {
@@ -32,24 +36,24 @@ export default function PublicTracking() {
       <header><a href="/" className="brand"><span className="brand-mark small">T</span><span>tracenet<small>LOGISTICS INTELLIGENCE</small></span></a><span>PUBLIC SHIPMENT TRACKING</span></header>
       <section className="public-hero">
         <p className="eyebrow">END-TO-END VISIBILITY</p>
-        <h1>Know where it is.<br/><span>Know it’s authentic.</span></h1>
+        <h1>Know where it is.<br/><span>Know it's authentic.</span></h1>
         <p>Enter a TraceNet tracking ID to see the shipment journey and its verified checkpoint history.</p>
         <form onSubmit={track}>
           <input value={id} onChange={e => setId(e.target.value)} placeholder="Enter tracking ID, e.g. TRC-100" required />
-          <button className="primary">{loading ? "Searching…" : "Track shipment →"}</button>
+          <button className="primary">{loading ? "Searching..." : "Track shipment  to "}</button>
         </form>
         {error && <div className="alert error">{error}</div>}
       </section>
       {shipment && <section className="public-result">
         <div className="public-result-head"><div><p className="eyebrow">SHIPMENT {shipment.shipmentId}</p><h2>{shipment.productName || "Shipment"}</h2></div><span className={`badge ${String(shipment.status).toLowerCase()}`}>{String(shipment.status).replaceAll("_", " ")}</span></div>
-        <div className="public-route"><div><small>ORIGIN</small><b>{shipment.source}</b></div><span>→</span><div><small>DESTINATION</small><b>{shipment.destination}</b></div><div><small>ESTIMATED ARRIVAL</small><b>{shipment.eta ? new Date(shipment.eta).toLocaleDateString() : "Not provided"}</b></div></div>
+        <div className="public-route"><div><small>ORIGIN</small><b>{shipment.source}</b></div><span> to </span><div><small>DESTINATION</small><b>{shipment.destination}</b></div><div><small>ESTIMATED ARRIVAL</small><b>{shipment.eta ? new Date(shipment.eta).toLocaleDateString() : "Not provided"}</b></div></div>
         <h3>Shipment journey</h3>
-        <div className="public-timeline">{(shipment.checkpoints || []).map((checkpoint: any, index: number) => <div className="public-stop" key={index}><i className={checkpoint.scanned ? "done" : ""}/><div><b>{checkpoint.location}</b><small>{checkpoint.scanned ? (checkpoint.scannedAt ? new Date(checkpoint.scannedAt).toLocaleString() : "Checkpoint scanned") : "Upcoming checkpoint"}</small></div><span className={checkpoint.scanned ? "verified" : "muted"}>{checkpoint.scanned ? "✓ Scanned" : "Pending"}</span></div>)}</div>
-        <h3>Blockchain proofs</h3>
-        {(result.events || []).map((event: any) => <div className="proof-row" key={event.eventId}><span className={event.anchorStatus === "CONFIRMED" ? "verified" : "muted"}>{event.anchorStatus === "CONFIRMED" ? "✓" : "◷"} {event.anchorStatus}</span><code>{event.eventHash}</code><small>{event.createdAt ? new Date(event.createdAt).toLocaleString() : ""}</small></div>)}
+        <div className="public-timeline">{(shipment.checkpoints || []).map((checkpoint: any, index: number) => <div className="public-stop" key={index}><i className={checkpoint.scanned ? "done" : ""}/><div><b>{checkpoint.location}</b><small>{checkpoint.scanned ? (checkpoint.scannedAt ? new Date(checkpoint.scannedAt).toLocaleString() : "Checkpoint scanned") : "Upcoming checkpoint"}</small></div><span className={checkpoint.scanned ? "verified" : "muted"}>{checkpoint.scanned ? " Scanned" : "Pending"}</span></div>)}</div>
+        <h3>Blockchain proofs</h3><p className="muted">Only a confirmed transaction receipt, matching on-chain event and recomputed event hash produce MATCH.</p>
+        {(result.events || []).map((event: any) => <div className="proof-row" key={event.eventId}><span className={event.anchorStatus === "CONFIRMED" ? "verified" : "muted"}>{event.anchorStatus === "CONFIRMED" ? "" : ""} {event.anchorStatus}</span><code>{event.eventHash}</code><small>{event.createdAt ? new Date(event.createdAt).toLocaleString() : ""}</small></div>)}
         {!(result.events || []).length && <p className="muted">No checkpoint proofs recorded yet.</p>}
       </section>}
-      <footer className="public-footer">Protected by TraceNet · Blockchain anchored tracking history</footer>
+      <footer className="public-footer">Protected by TraceNet  Blockchain anchored tracking history</footer>
     </main>
   );
 }

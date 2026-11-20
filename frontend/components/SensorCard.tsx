@@ -43,7 +43,7 @@ export default function SensorCard({ sensor, addressBook = {} }: {
     <div className="p-4 bg-white/95 dark:bg-slate-800 rounded-md border shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-xs text-gray-500">{formatTs(sensor.time)} — signer:{" "}
+          <div className="text-xs text-gray-500">{formatTs(sensor.time)} - signer:{" "}
             <button
               onClick={() => signer && copy(signer)}
               className="font-mono text-sm text-sky-600 hover:underline"

@@ -61,7 +61,7 @@ For development frontend hot reload, use `npm run frontend` instead of build/sta
 
 ## Seed and credentials
 
-API startup idempotently creates missing demo records: Admin, Operator, `PRD-100` / `TAG-100`, `TRC-100` with Hyderabad → Kurnool → Bengaluru, and three simulated devices. `npm run seed` runs the seed independently. Development-only credentials:
+API startup idempotently creates missing demo records: Admin, Operator, `PRD-100`, `TRC-100` with Hyderabad → Kurnool → Bengaluru, and three simulated devices. New shipments receive generated shipment, tracking, RFID and QR reference IDs. Existing demo `TRC-100` retains its legacy `TAG-100` tag. `npm run seed` runs the seed independently. Development-only credentials:
 
 - Admin: `admin@tracenet.com` / `Admin@123`
 - Operator: `operator@tracenet.com` / `Operator@123`
@@ -70,16 +70,16 @@ Seed is not a reset: it does not clear previous scan state. For a clean repeatab
 
 ## Demo workflow
 
-See [DEMO_GUIDE.md](DEMO_GUIDE.md) for the 5–7 minute browser walkthrough. The verified flow is product → shipment → scans → Mongo event/outbox → real chain receipt → MATCH / MISMATCH → public tracking.
+See [DEMO_GUIDE.md](DEMO_GUIDE.md) for the 5–7 minute browser walkthrough. The verified flow is product → shipment with generated RFID/QR labels → QR camera lookup or simulated RFID → confirmed checkpoint scan → Mongo event/outbox → real chain receipt → MATCH / MISMATCH → public tracking.
 
 ## API overview
 
 - Auth: `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/users` (Admin).
 - Products: `GET/POST /api/products` (create Admin).
 - Shipments: `GET/POST /api/shipments`, `GET /api/shipments/:id`, `GET /api/shipments/:id/timeline`.
-- Scans: `POST /api/scans` with `{ "rfidTag":"TAG-100", "deviceId":"ESP32-WH-01", "checkpoint":"Hyderabad" }`; optional `X-Device-Secret` header.
+- Scans: `GET /api/scan/lookup/:tag` resolves shipment ID, RFID tag, or `tracenet:` QR reference. `POST /api/scans` accepts `{ "rfidTag":"RFID-…", "deviceId":"ESP32-WH-01", "checkpoint":"Hyderabad", "scanMode":"RFID_SIMULATION", "confirmed":true }`. QR scans use `shipmentId` instead; optional `X-Device-Secret` header.
 - Devices: `GET/POST /api/devices`.
-- Blockchain: `GET /api/blockchain/transactions`, `POST /api/blockchain/retry/:eventId` (Admin), `GET /api/blockchain/verify/:eventId`, `POST /api/blockchain/tamper-demo/:eventId` (Admin).
+- Blockchain: `GET /api/blockchain/transactions`, `POST /api/blockchain/retry/:eventId` (Admin), `GET /api/blockchain/verify/:eventId` (authenticated), `GET /api/public/verify/:eventId` (receipt, event, and hash verification), `GET /api/public/verify-shipment/:id`, `POST /api/blockchain/tamper-demo/:eventId` (Admin; isolated response only).
 - Public: `GET /api/public/track/:trackingId` (no token).
 - Dashboard/audit: `GET /api/dashboard`, `GET /api/audit` (Admin), `GET /health`.
 
@@ -100,7 +100,7 @@ npm ls sqlite3 --all
 ## Known limitations
 
 - Next.js is used instead of Vite; frontend and backend are not fully TypeScript; backend does not use Zod.
-- Product/shipment update, user/device management, separate Operator dashboard, full chart widgets, status transition validation, and physical `/iot/events` ingestion are incomplete.
+- Physical RFID hardware is not connected. The RFID interface is an explicitly labeled simulation; a real USB/serial reader needs a separate adapter. QR camera scanning uses ZXing in supported secure browser contexts.
 - Event API has no edit/delete operation, but MongoDB does not enforce immutable event documents against privileged writes.
 - Outbox retry after an induced anchor failure passed; backend process-crash recovery and RPC-outage recovery were not fault-injected.
 - Current verified chain is local Hardhat and database is local MongoDB, not public EVM or Atlas.

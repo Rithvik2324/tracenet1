@@ -3,7 +3,7 @@ export function shortenHex(hex: string | null | undefined, prefixLen = 8, suffix
   if (!hex) return '';
   const h = String(hex);
   if (h.length <= prefixLen + suffixLen + 3) return h;
-  return `${h.slice(0, prefixLen)}…${h.slice(-suffixLen)}`;
+  return `${h.slice(0, prefixLen)}...${h.slice(-suffixLen)}`;
 }
 
 export function formatTs(ts?: number | string) {

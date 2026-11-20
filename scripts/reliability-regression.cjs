@@ -70,11 +70,11 @@ async function request(path, { token, method = 'GET', body, deviceSecret } = {})
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 async function fixture(tag, status = 'READY_FOR_PICKUP') {
-  const product = await Product.create({ productId: `${id}-${tag}`, name: 'Reliability fixture', rfidTag: tag });
+  const product = await Product.create({ productId: `${id}-${tag}`, name: 'Reliability fixture', rfidTag: `RAW-${tag}` });
   const operator = await User.findOne({ role: 'OPERATOR' });
   return Shipment.create({
-    shipmentId: `${id}-${tag}`, trackingId: `${id}-${tag}`, productRef: product._id,
-    productId: product.productId, productName: product.name, rfidTag: tag,
+    shipmentId: `${id}-${tag}`, trackingId: `${id}-${tag}`, qrReference:`tracenet:${id}-${tag}`, productRef: product._id,
+    productId: product.productId, productName: product.name, rfidTag: `RFID-${`${id}-${tag}`.replace(/[^A-Za-z0-9-]/g, '').toUpperCase()}`,
     source: 'Hyderabad', destination: 'Bengaluru', assignedOperator: operator._id,
     status, checkpoints: ['Hyderabad', 'Kurnool', 'Bengaluru'].map((location, sequence) => ({ location, sequence, scanned: false })),
   });
@@ -95,32 +95,32 @@ async function main() {
     // Negative scan cases against the real Express route, asserting no events are inserted.
     await startApi(RPC);
     const before = await TrackingEvent.countDocuments({ shipmentId: shipment.shipmentId });
-    let result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: `${id}-UNKNOWN`, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad' } });
-    assert.equal(result.status, 404); assert.match(result.body.error, /RFID tag/);
-    result = await request('/api/scans', { token: operatorToken, method: 'POST', deviceSecret: 'incorrect-secret', body: { rfidTag: tag, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad' } });
+    let result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: `${id}-UNKNOWN`, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad', confirmed:true } });
+    assert.equal(result.status, 404); assert.match(result.body.error, /Tag or shipment/);
+    result = await request('/api/scans', { token: operatorToken, method: 'POST', deviceSecret: 'incorrect-secret', body: { rfidTag: `RFID-${shipment.shipmentId.replace(/[^A-Za-z0-9-]/g, '').toUpperCase()}`, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad', confirmed:true } });
     assert.equal(result.status, 401); assert.match(result.body.error, /Device authentication/);
-    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: tag, deviceId: 'NO-SUCH-DEVICE', checkpoint: 'Hyderabad' } });
+    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: `RFID-${shipment.shipmentId.replace(/[^A-Za-z0-9-]/g, '').toUpperCase()}`, deviceId: 'NO-SUCH-DEVICE', checkpoint: 'Hyderabad', confirmed:true } });
     assert.equal(result.status, 401); assert.match(result.body.error, /device/);
-    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: tag, deviceId: 'ESP32-WH-01', checkpoint: 'Bengaluru' } });
+    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: `RFID-${shipment.shipmentId.replace(/[^A-Za-z0-9-]/g, '').toUpperCase()}`, deviceId: 'ESP32-WH-01', checkpoint: 'Bengaluru', confirmed:true } });
     assert.equal(result.status, 409); assert.match(result.body.error, /Invalid checkpoint progression/);
     assert.equal(await TrackingEvent.countDocuments({ shipmentId: shipment.shipmentId }), before);
     console.log('PASS invalid RFID, bad device credential, unknown device and wrong checkpoint reject without event writes');
 
-    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: tag, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad' } });
+    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: `RFID-${shipment.shipmentId.replace(/[^A-Za-z0-9-]/g, '').toUpperCase()}`, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad', confirmed:true } });
     assert.equal(result.status, 202);
     const firstEvent = result.body.event.eventId;
     for (let i = 0; i < 40 && !(await BlockchainTransaction.exists({ eventId: firstEvent, status: 'CONFIRMED' })); i++) await sleep(250);
     assert.ok(await BlockchainTransaction.exists({ eventId: firstEvent, status: 'CONFIRMED' }));
     const eventCount = await TrackingEvent.countDocuments({ shipmentId: shipment.shipmentId });
-    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: tag, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad' } });
+    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: `RFID-${shipment.shipmentId.replace(/[^A-Za-z0-9-]/g, '').toUpperCase()}`, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad', confirmed:true } });
     assert.equal(result.status, 409); assert.match(result.body.error, /Invalid checkpoint progression|already been scanned/);
     assert.equal(await TrackingEvent.countDocuments({ shipmentId: shipment.shipmentId }), eventCount);
-    const cancelled = await Shipment.findOne({ rfidTag: `${id}-CANCEL` });
-    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: cancelled.rfidTag, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad' } });
+    const cancelled = await Shipment.findOne({ shipmentId: `${id}-${id}-CANCEL` });
+    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: cancelled.rfidTag, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad', confirmed:true } });
     assert.equal(result.status, 409); assert.match(result.body.error, /CANCELLED/);
     assert.equal(await TrackingEvent.countDocuments({ shipmentId: cancelled.shipmentId }), 0);
-    const created = await Shipment.findOne({ rfidTag: `${id}-CREATED` });
-    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: created.rfidTag, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad' } });
+    const created = await Shipment.findOne({ shipmentId: `${id}-${id}-CREATED` });
+    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: created.rfidTag, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad', confirmed:true } });
     assert.equal(result.status, 409); assert.match(result.body.error, /CREATED/);
     assert.equal(await TrackingEvent.countDocuments({ shipmentId: created.shipmentId }), 0);
     const adminLogin = await request('/api/auth/login', { method: 'POST', body: { email: 'admin@tracenet.com', password: 'Admin@123' } });
@@ -137,7 +137,7 @@ async function main() {
     assert.equal(result.status, 409); assert.match(result.body.error, /Invalid shipment status transition/);
     result = await request('/api/devices/ESP32-KU-01', { token: adminLogin.body.token, method: 'PATCH', body: { status: 'INACTIVE' } });
     assert.equal(result.status, 200); assert.equal(result.body.secretHash, undefined);
-    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: tag, deviceId: 'ESP32-KU-01', checkpoint: 'Hyderabad' } });
+    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: `RFID-${shipment.shipmentId.replace(/[^A-Za-z0-9-]/g, '').toUpperCase()}`, deviceId: 'ESP32-KU-01', checkpoint: 'Hyderabad', confirmed:true } });
     assert.equal(result.status, 401);
     await request('/api/devices/ESP32-KU-01', { token: adminLogin.body.token, method: 'PATCH', body: { status: 'ACTIVE' } });
     assert.equal(await TrackingEvent.countDocuments({ shipmentId: shipment.shipmentId }), eventCount);
@@ -150,7 +150,7 @@ async function main() {
     assert.equal((await (await fetch(`${API}/health`)).json()).blockchain, false);
     const outboxTag = `${id}-OUTBOX`;
     const pendingShipment = await fixture(outboxTag);
-    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: outboxTag, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad' } });
+    result = await request('/api/scans', { token: operatorToken, method: 'POST', body: { rfidTag: `RFID-${pendingShipment.shipmentId.replace(/[^A-Za-z0-9-]/g, '').toUpperCase()}`, deviceId: 'ESP32-WH-01', checkpoint: 'Hyderabad', confirmed:true } });
     assert.equal(result.status, 202);
     const pendingId = result.body.event.eventId;
     await sleep(900);

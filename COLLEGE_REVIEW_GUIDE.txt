@@ -1,0 +1,569 @@
+TRACENET — COMPLETE COLLEGE REVIEW GUIDE
+========================================
+
+Prepared from the current project source, README, demo guide, traceability audit, and test report.
+Project: TraceNet — blockchain-backed shipment traceability MVP
+Repository: https://github.com/Rithvik2324/tracenet1
+Suggested group size: 3 presenters
+Suggested total review time: 12–15 minutes including the live demo
+
+IMPORTANT: Speak about what the project actually does. RFID hardware is simulated. The verified environment is local MongoDB and a local Hardhat EVM. Do not say the app uses a physical RFID reader, MongoDB Atlas, a public blockchain, Vite, or a TypeScript backend.
+
+============================================================
+1. PROJECT IN ONE MINUTE
+============================================================
+
+TraceNet is a shipment traceability application. It lets an administrator register products and shipments, then lets an authorized operator record checkpoint scans as a shipment moves along a route. The application stores detailed operational records in MongoDB. For tamper-evidence, it computes a Keccak-256 hash for each scan event and anchors that hash to a Solidity smart contract on an EVM blockchain. The application later compares the MongoDB event hash with the on-chain hash. A public tracking page shows safe shipment progress without requiring a login.
+
+The demonstration route is:
+Hyderabad → Kurnool → Bengaluru
+
+The central idea is to keep the full, queryable operational data off-chain and put a compact proof on-chain. This reduces blockchain storage while allowing the application to check whether a recorded event matches its anchored proof.
+
+Short project pitch:
+“TraceNet combines a shipment management web app, RFID scan simulation, MongoDB event storage, and Solidity hash anchoring so that shipment progress can be recorded, checked, and viewed publicly.”
+
+============================================================
+2. THREE-PERSON SPEAKING PLAN
+============================================================
+
+PERSON 1 — PROBLEM, GOALS, ARCHITECTURE, AND SETUP (about 4 minutes)
+Owns: why the project exists; overall architecture; data flow overview; technology choices and honest stack comparison; setup and system diagram.
+
+PERSON 2 — DATABASE, API, USERS, AND RFID SCAN IMPLEMENTATION (about 4 minutes)
+Owns: MongoDB/Mongoose models; authentication and roles; product/shipment/device APIs; RFID simulation; validation and negative tests; event history.
+
+PERSON 3 — BLOCKCHAIN, OUTBOX, VERIFICATION, UI DEMO, TESTS, AND LIMITS (about 4–6 minutes)
+Owns: contract and anchoring; outbox states and retry; MATCH/MISMATCH/NOT_ANCHORED; dashboard/public tracking demo; tests; remaining work and conclusion.
+
+The handoff sentences are included at the end of each person's section. All three should know the 1-minute pitch and the full workflow, even if each owns one area.
+
+============================================================
+3. PERSON 1 — PROJECT CONTEXT AND ARCHITECTURE
+============================================================
+
+A. Problem being addressed
+
+Shipment tracking information may be split across organizations, spreadsheets, or isolated systems. A status displayed by one party may be difficult for another party to independently trust. TraceNet demonstrates a shared workflow where:
+- staff record shipment checkpoints;
+- the operational event is saved in a database;
+- a hash of the event is written to a blockchain contract;
+- another user can compare the saved event to the on-chain proof;
+- a public viewer can look up shipment progress without seeing internal RFID/device/operator details.
+
+This is a prototype/MVP that demonstrates the software workflow. It does not connect to real logistics providers or physical RFID hardware.
+
+B. Project objectives
+
+1. Register products with unique product IDs; generate RFID-style shipment tags when shipments are created.
+2. Register shipments and define a sequenced route.
+3. Restrict administrative actions to Admin and scan operations to authorized users.
+4. Record checkpoint scans only if the tag, device, shipment, status, and next checkpoint are valid.
+5. Save tracking data persistently in MongoDB.
+6. Hash event data and anchor the hash in a Solidity contract.
+7. Store transaction status and receipt data for later verification.
+8. Show public tracking safely without authentication.
+9. Demonstrate rejection of invalid actions and safe behavior when the blockchain RPC is unavailable.
+
+C. Architecture diagram (explain from left to right)
+
+Admin / Operator / Public viewer
+          |
+          v
+React + Next.js frontend (frontend/)
+          |
+          | HTTP JSON requests, JWT bearer token for protected actions
+          v
+Express API (tracenet-api.js)
+       /             \
+      v               v
+MongoDB/Mongoose     ethers.js provider/wallet
+(models.js)                 |
+                            v
+                    Hardhat local EVM
+                            |
+                            v
+                    CustodyRegistry.sol
+
+Workflow diagram:
+Admin creates shipment -> generated Shipment ID + RFID Tag ID + QR reference
+       -> Operator scans QR or simulates RFID -> shipment lookup -> checkpoint confirmation
+       -> MongoDB event + canonical hash -> blockchain anchor transaction/receipt
+       -> public tracking -> recomputed hash + receipt/log/on-chain comparison -> MATCH/PENDING/MISMATCH
+
+Detailed data flow:
+1. User signs into the frontend. The API checks credentials against a password hash and returns a JWT.
+2. Admin creates a product and shipment. The API generates a unique shipment ID, tracking ID, RFID-style Tag ID, and non-sensitive QR reference. The label can be downloaded or printed.
+3. Operator uses the dedicated Scan Shipment page to scan QR with the camera or enter an RFID-style Tag ID in explicitly labeled simulation mode. A separate hardware adapter is needed for physical readers.
+4. API authenticates the user and device, validates shipment assignment/status/route order, requires operator confirmation, and rejects invalid scans before writing an event.
+5. For a valid scan, API writes the event with a Keccak-256 hash and creates a pending blockchain transaction/outbox record in MongoDB.
+6. A background worker submits the event ID and hash to the contract.
+7. After a successful transaction receipt, API updates the event and transaction record with CONFIRMED, transaction hash, and block number.
+8. Verification recomputes the hash from stored event data, checks the stored on-chain hash, confirms the transaction receipt succeeded, and checks the expected contract event log.
+9. Public tracking returns an allowlisted shipment summary and event proof fields without a bearer token; it reports MATCH only after real chain and receipt checks.
+
+D. Technology choices — be exact
+
+Frontend:
+- React, using Next.js 15 App Router.
+- JavaScript and some TypeScript are present; it is not a strict TypeScript-only frontend.
+- The presentation mentions React + Vite + TypeScript. This project uses Next.js instead; we kept the existing functional application rather than changing framework only for appearance.
+
+Backend:
+- Node.js and Express REST API, implemented in JavaScript/CommonJS.
+- JWT for authentication; bcryptjs for password/device secret hashing.
+- ethers.js connects API to the EVM contract.
+- The presentation calls for Express + TypeScript and Zod. This backend is not TypeScript and does not use Zod.
+
+Database:
+- MongoDB through Mongoose.
+- No SQLite runtime database or in-memory substitute is used. API startup requires MONGODB_URI.
+
+Blockchain:
+- Solidity contract: contracts/CustodyRegistry.sol.
+- Hardhat local development blockchain and ethers.js.
+- Local solc-js 0.8.15 is configured so compilation can work without downloading a compiler.
+- The verified demonstration uses a local blockchain, not Ethereum mainnet or a public testnet.
+
+Why split data between DB and chain?
+- Full event payloads and queries belong in MongoDB, which is convenient for application reads and dashboards.
+- Blockchain transactions are slower/costlier and less suitable for large data.
+- Store the event proof (event identity + hash) on-chain so the system can compare it with the off-chain record.
+
+Person 1 closing / handoff:
+“That is the system layout. I’ll hand over to Person 2 to explain how users, shipments, and RFID scans are represented and validated before they enter the tracking history.”
+
+============================================================
+4. PERSON 2 — DATABASE, API, AUTHORIZATION, AND RFID
+============================================================
+
+A. MongoDB models (models.js)
+
+User:
+- name, email, password hash, role.
+- roles are ADMIN and OPERATOR.
+- Unique email index prevents duplicate accounts.
+
+Product:
+- productId, name, rfidTag, category, description, status.
+- Unique productId and shipment RFID tag ensure identifiers do not collide.
+
+Shipment:
+- shipmentId and trackingId;
+- reference/product snapshot fields;
+- source, destination, assigned operator, ETA, status;
+- checkpoints array with location, sequence, scan state, timestamp, device, and operator.
+- Shipment status values include CREATED, READY_FOR_PICKUP, IN_TRANSIT, ARRIVED_AT_CHECKPOINT, OUT_FOR_DELIVERY, DELIVERED, DELAYED, and CANCELLED.
+
+IoTDevice:
+- deviceId, name, location, ACTIVE/INACTIVE state, and hashed secret.
+- Secret hash is not returned by normal API queries.
+
+TrackingEvent:
+- eventId, shipmentId, checkpoint, tag, device, event type, actor, eventData, eventHash;
+- anchorStatus plus optional transaction hash, block number, and error.
+- Unique eventId and unique shipment/checkpoint scan index prevent duplicate checkpoint events.
+
+BlockchainTransaction:
+- one transaction/outbox record per eventId;
+- status, eventHash, txHash, blockNumber, and error.
+- Unique eventId supports idempotency.
+
+AuditLog:
+- actor, action, details, and timestamps for actions such as login, product/shipment changes, scan, retry, verification, and anchor confirmation.
+
+Mongoose provides field types, required fields, enums, and indexes. Unique database indexes are important because they protect uniqueness under concurrent requests too, rather than relying only on a frontend check.
+
+B. API responsibilities
+
+Authentication:
+- POST /api/auth/login checks email/password and returns a time-limited JWT.
+- Protected API routes expect Authorization: Bearer <token>.
+- POST /api/auth/users is Admin-only.
+
+Products:
+- GET /api/products lists products for signed-in users.
+- POST /api/products creates a product (Admin-only).
+- PATCH /api/products/:id edits allowed product fields (Admin-only).
+
+Shipments:
+- GET /api/shipments returns all for Admin and assigned/unassigned scope for Operator.
+- POST /api/shipments creates shipment with product and ordered route (Admin-only).
+- PATCH /api/shipments/:id changes status/ETA/operator subject to transition validation (Admin-only).
+- GET shipment details/timeline retrieves shipment and ordered events.
+
+Devices and scans:
+- GET/POST /api/devices; register is Admin-only.
+- PATCH /api/devices/:id enables/disables or edits a device (Admin-only).
+- POST /api/scans submits a checkpoint scan.
+
+Blockchain and tracking:
+- GET /api/blockchain/transactions lists visible transactions.
+- POST /api/blockchain/retry/:eventId retries a failed anchor (Admin-only).
+- GET /api/blockchain/verify/:eventId returns verification status.
+- POST /api/blockchain/tamper-demo/:eventId is an Admin demo that alters a copy in memory, not saved history.
+- GET /api/public/track/:id is unauthenticated and uses an explicit response allowlist.
+- GET /api/dashboard provides DB-derived dashboard data.
+- GET /api/audit is Admin-only.
+
+C. Role permissions
+
+Admin:
+- create/edit products and shipments;
+- create operator accounts and devices;
+- change shipment status/ETA and device active state;
+- view audit log;
+- retry failed anchors and use tamper demonstration.
+
+Operator:
+- see shipments assigned to them or unassigned;
+- submit valid scans;
+- cannot create products/shipments/users, administer devices, or retry anchors.
+- API enforces permissions even if someone bypasses the frontend.
+
+Public viewer:
+- no account is required for public shipment lookup.
+- public page/API only return safe, selected fields; RFID tag, device secret, and operator assignment are not exposed.
+
+D. RFID scan validation — walk through a valid request
+
+Example request body:
+{
+  "rfidTag": "RFID-TRC-2026-001",
+  "deviceId": "ESP32-WH-01",
+  "checkpoint": "Hyderabad"
+}
+
+Optional device credential header:
+X-Device-Secret: <configured simulator secret>
+
+The API checks, in order:
+1. Required tag, device, checkpoint fields are present.
+2. Device exists and is ACTIVE.
+3. Device secret is valid.
+4. RFID tag is assigned to a shipment.
+5. If the user is an Operator, shipment assignment allows them to scan it.
+6. Shipment status permits scanning.
+7. There is a next unscanned checkpoint.
+8. Submitted checkpoint equals the next required location.
+9. Mongo unique index prevents a duplicate shipment/checkpoint scan.
+
+Negative cases tested:
+- unknown RFID tag: 404;
+- invalid, unknown, or disabled device: 401;
+- wrong checkpoint, duplicate scan, invalid route/status transition: 409;
+- rejected scan attempts do not add tracking events.
+
+For TRC-100 the ordered checkpoints are Hyderabad, then Kurnool, then Bengaluru. A Kurnool scan before Hyderabad is rejected. After all three, shipment status becomes DELIVERED.
+
+E. Event creation and append-only behavior
+
+For each accepted scan, API creates event data including eventId, shipmentId, eventType, location, RFID tag, device ID, actor, and occurrence time. It computes:
+
+keccak256(UTF8(JSON.stringify(eventData)))
+
+The original event payload is stored in MongoDB along with its hash. There is no tracking-event edit/delete API. This is append-only at the application API boundary, but do not claim it is immutable against a database administrator with direct write privileges. That stronger control is a known limitation.
+
+Person 2 closing / handoff:
+“So invalid scans are stopped before entering history, and valid ones are durably saved with a hash and a pending anchor record. Person 3 will explain how that pending record becomes a blockchain receipt and how we verify and demonstrate the result.”
+
+============================================================
+5. PERSON 3 — CONTRACT, OUTBOX, VERIFICATION, AND DEMO
+============================================================
+
+A. Solidity contract (contracts/CustodyRegistry.sol)
+
+The project has a CustodyRegistry contract. Its relevant traceability fields/functions:
+- owner: deployer account;
+- authorizedAnchorer mapping: owner can grant/revoke who can anchor;
+- shipmentEventHashes mapping: event ID maps to bytes32 hash;
+- anchorEvent(shipmentId, eventId, eventHash): checks authorized writer, nonempty IDs/hash, and prevents reusing an already anchored eventId;
+- emits ShipmentEventAnchored event for transaction-log evidence;
+- getEventHash(eventId) returns saved proof.
+
+The deploy script deploys the contract and authorizes the backend account from BACKEND_PRIVATE_KEY. The local API reads contract address and artifact path from environment/configuration.
+
+Note: contract includes earlier batch/custody/sensor demonstration functions too. The TraceNet shipment workflow uses anchorEvent/getEventHash. The contract uses a custom owner-controlled mapping, not OpenZeppelin AccessControl.
+
+B. Hash and verification logic
+
+1. During scan, API serializes eventData as JSON and hashes its UTF-8 bytes with Keccak-256 using ethers.
+2. API submits event ID and hash to anchorEvent.
+3. Contract stores the hash and emits an event.
+4. After transaction is mined, API checks receipt status and stores tx hash and block number in Mongo.
+5. Verification reads event from Mongo and calls getEventHash(eventId) on chain.
+6. API recomputes hash from saved eventData.
+7. It compares the recomputed hash and stored hash with the on-chain hash.
+
+Results:
+- MATCH: saved data recomputes to the event hash and equals the blockchain value.
+- MISMATCH: data/proof values disagree. Demo button makes a changed in-memory copy to demonstrate mismatch; it does not edit saved event.
+- NOT_ANCHORED: event exists off-chain but contract has no hash for its ID.
+- UNAVAILABLE: blockchain provider is unavailable; this is not treated as confirmation.
+
+Important: Hashing uses JSON.stringify property order. The project does not yet implement a formal, versioned canonical JSON format. Explain that a production system should define canonical serialization and version the payload.
+
+C. Outbox and reliability
+
+Outbox is a reliability pattern. Instead of treating “scan recorded” as “blockchain confirmed,” the event and its blockchain transaction state are persisted separately in Mongo.
+
+States:
+- PENDING: event/outbox exists and is waiting for the worker.
+- SUBMITTED: worker is processing or has submitted the transaction; receipt may not be saved yet.
+- CONFIRMED: transaction receipt succeeded; tx hash and block number are stored.
+- FAILED: a definite/revert failure occurred and an Admin may retry.
+
+Worker behavior:
+- background polling picks the oldest PENDING event;
+- sets SUBMITTED before submitting;
+- submits transaction to contract;
+- waits for receipt;
+- only then calls completeAnchor to set CONFIRMED and persist receipt details;
+- it checks already-anchored events and has recovery logic for SUBMITTED rows;
+- retry endpoint only resets failed anchor to PENDING and triggers processing.
+
+Reliability test actually performed:
+1. Start isolated API with Mongo test database and unreachable RPC.
+2. Submit valid scan.
+3. Confirm Mongo TrackingEvent and BlockchainTransaction remain PENDING with no tx hash/block/CONFIRMED.
+4. Stop API process.
+5. Restart API when local Hardhat RPC is available.
+6. Wait for worker to submit transaction.
+7. Check exactly one matching contract event/hash, successful receipt status, block number, and Mongo confirmed state.
+8. Verify event returns MATCH.
+
+Another browser flow caused a contract writer rejection, showed NOT_ANCHORED, then used Admin retry and confirmed an anchor. Duplicate retry was rejected.
+
+Known limits: the exact process-crash window after RPC accepts a transaction but before Mongo saves txHash was not fault-injected. Backoff for long-running outages is limited. Mongo multi-document transactions are not used.
+
+D. Frontend pages and what to demonstrate
+
+Main app: http://localhost:3000/
+- Overview: Mongo-derived count cards and shipment status chart; recent activity.
+- Products: create/search catalog; Admin can edit a product.
+- Shipments: create shipment, view list/timeline, Admin can edit status/ETA.
+- RFID Simulator: choose tag and reader and submit next checkpoint.
+- Blockchain: status, transaction hash, block number, verify, Admin retry/tamper demo.
+- Devices: Admin sees/registers/enables/disables readers.
+- Users: Admin creates and views operators.
+- Audit log: Admin reviews recorded operations.
+
+Public page: http://localhost:3000/verify
+- enter tracking ID (for example TRC-100);
+- no login is required;
+- show route, status, event proof details that are allowlisted.
+
+E. Recommended live demo, in order
+
+Before class:
+1. Make sure MongoDB is running.
+2. Make sure local Hardhat node is running on 127.0.0.1:8545.
+3. Check .env has MONGODB_URI, non-placeholder JWT_SECRET, BACKEND_PRIVATE_KEY, CONTRACT_ADDRESS, and device secret.
+4. Ensure contract is deployed to the running Hardhat chain and backend wallet is authorized.
+5. Start API and frontend, then check API /health.
+6. Use a clean demonstration database if TRC-100 has already been scanned. Seeding is idempotent; it does not reset shipment progress.
+7. Never show .env or reuse the development private key on a public network.
+
+Live sequence:
+1. Log in as Admin; briefly show dashboard and audit log.
+2. Create a shipment with product PRD-100; show its generated Shipment ID, RFID Tag ID and QR label (download or print).
+3. Use Operator credentials and open Scan Shipment. Demonstrate camera QR scanning or manual Shipment/RFID ID lookup.
+4. Confirm the displayed next checkpoint (Hyderabad). Then show simulated RFID mode and record the next checkpoint using the UI confirmation action.
+5. Open Blockchain section and show CONFIRMED, transaction hash, block number; verify MATCH.
+6. Scan subsequent route checkpoints in sequence; every accepted scan creates a Mongo event and anchored transaction.
+7. Show the complete shipment timeline and public tracking proofs.
+8. Switch to Admin and run the isolated tamper demo; it hashes a modified copy without changing MongoDB or the normal demo record.
+9. Publicly track TRC-100 from /verify without logging in.
+10. If time allows, show negative scan rejection or refer to automated reliability test report. Public MATCH requires a successful receipt, expected contract log, and recomputed hash to agree.
+
+Do not promise TRC-100 starts at Hyderabad if the shared demo database has prior scans. Use a fresh database configured in MONGODB_URI before API startup for a clean route demo. Do not delete the current database without understanding its contents.
+
+============================================================
+6. STARTUP AND REPOSITORY TOUR
+============================================================
+
+Expected tools:
+- Node.js and npm;
+- MongoDB local service or accessible MongoDB URI;
+- PowerShell/terminal;
+- dependencies installed in project root and frontend.
+
+Initial setup (PowerShell, project root):
+
+npm install
+npm --prefix frontend install
+Copy-Item .env.example .env
+
+Edit .env with local development settings. Do not commit .env. It is ignored by Git.
+
+Start local Hardhat (project root terminal):
+
+$env:APPDATA = (Join-Path (Get-Location) '.hardhat-local')
+$env:LOCALAPPDATA = (Join-Path (Get-Location) '.hardhat-local')
+npm run compile
+npm run node
+
+Keep this terminal open. In another project-root terminal, deploy if needed:
+
+$env:APPDATA = (Join-Path (Get-Location) '.hardhat-local')
+$env:LOCALAPPDATA = (Join-Path (Get-Location) '.hardhat-local')
+npm run deploy
+
+Use the printed address as CONTRACT_ADDRESS in .env. Ensure BACKEND_PRIVATE_KEY matches the API signer that deployment authorized.
+
+Start backend in another terminal:
+npm run api
+
+Start frontend for development:
+npm run frontend
+
+Or use production build/start:
+npm --prefix frontend run build
+npm --prefix frontend run start
+
+Useful URLs:
+- frontend: http://localhost:3000/
+- public tracker: http://localhost:3000/verify
+- API health: http://localhost:4000/health
+- RPC: http://127.0.0.1:8545
+
+Repository map:
+- frontend/app/page.js: main dashboard, products, shipments, scanning, blockchain and management UI.
+- frontend/app/verify/: public/legacy verification page and QR scanner.
+- frontend/components/QrGenerator.tsx: QR generation UI helper.
+- tracenet-api.js: Express app, auth, routes, scan validation, hashing, outbox, verification, seed and health.
+- models.js: Mongoose schemas, validators, indexes.
+- contracts/CustodyRegistry.sol: Solidity contract.
+- hardhat.config.js: compiler and local network configuration.
+- scripts/deploy.js: deploy contract and grant backend anchor role.
+- scripts/seed-demo.js: seed Mongo demo records.
+- scripts/reliability-regression.cjs: negative scans and RPC outage/restart reliability test.
+- scripts/traceability-ui-audit.cjs: browser-based end-to-end demo/audit.
+- .env.example: required configuration names and safe placeholders.
+- TRACEABILITY_AUDIT.md: PPT requirement traceability and completion assessment.
+- TEST_REPORT.md: executed tests and evidence.
+
+============================================================
+7. TESTING AND VERIFIED RESULTS
+============================================================
+
+Automated reliability regression:
+npm run test:reliability
+
+This tests invalid RFID/device, wrong and repeated scans, invalid status, role restrictions, event non-creation on rejected requests, RPC outage persistence, backend restart, retry, receipt, single anchor and final MATCH.
+
+Frontend production build:
+npm --prefix frontend run build
+
+Solidity compilation:
+$env:APPDATA = (Join-Path (Get-Location) '.hardhat-local')
+$env:LOCALAPPDATA = (Join-Path (Get-Location) '.hardhat-local')
+npm run compile
+
+The complete browser audit script requires live MongoDB, local Hardhat, API, frontend, and Chrome debugging on port 9223:
+node scripts/traceability-ui-audit.cjs
+
+Verified results at the latest reported audit:
+- Production frontend build succeeded.
+- Hardhat offline compilation check succeeded against local compiler/artifact.
+- Backend started and connected to local MongoDB and local Hardhat EVM.
+- Real browser Admin and Operator role behavior was exercised.
+- Required route scans were completed in order on a generated audit shipment.
+- MongoDB stored events and blockchain transaction state.
+- Contract receipt/hash/block details were checked.
+- MATCH, MISMATCH, NOT_ANCHORED were demonstrated.
+- RPC outage left event pending and unconfirmed; process restart with RPC restored led to exactly one valid anchor and MATCH.
+- Public tracking worked without authentication and omitted sensitive internal fields.
+- Audit records and dashboard data were checked.
+- Current verified completion assessment is 65.5% (36/55 in-scope traceability matrix rows), not 100%.
+
+The exact audit shipment ID is generated per run. The most recently documented full UI run used TRC-AUDIT-96251732. The repeatable reliability test uses a separate Mongo database named tracenet_reliability.
+
+============================================================
+8. EXPECTED LIMITATIONS — SAY THESE HONESTLY
+============================================================
+
+1. No physical RFID hardware is connected. QR scanning uses the camera; RFID simulation accepts tag IDs in software. A future hardware adapter must connect a supported USB or serial reader.
+2. Blockchain used is a local Hardhat development chain. This is not public testnet/mainnet deployment.
+3. Database verified is local MongoDB, not Atlas.
+4. The frontend is Next.js/React and mixed JS/TS, not Vite with complete TypeScript.
+5. Backend is Express JavaScript, not TypeScript, and does not use Zod.
+6. Event history has no edit/delete API, but a database administrator with direct write privileges could still change data.
+7. Hash payload serialization uses JSON.stringify insertion order, not a formally standardized canonical format.
+8. The tamper demo alters a copy in memory to illustrate mismatch; it does not change the persisted source event.
+9. The narrow crash interval between chain acceptance and saving txHash was not fault-injected.
+10. Audit score is an evidence-based subset score: only verified rows count. It is not a statement that every item is complete.
+11. Seed data creation is idempotent, not a reset; it does not restore an already-progressed TRC-100 route.
+
+============================================================
+9. LIKELY MENTOR QUESTIONS AND ANSWER GUIDANCE
+============================================================
+
+Q1. Why use blockchain if MongoDB already stores the event?
+A. MongoDB is the operational store. The chain provides an independently checkable hash anchor. If the stored payload changes, recomputation can differ from the anchored hash. We avoid putting full shipment data on-chain.
+
+Q2. Is the complete event stored on blockchain?
+A. No. MongoDB stores the full event. The contract stores event ID to event hash and emits a transaction event. This saves on-chain storage and avoids publishing the complete operational payload.
+
+Q3. What does a hash prove?
+A. It provides a fixed-size fingerprint of the event bytes. If the content changes, its computed hash should change. A matching hash indicates consistency with the anchored bytes; it does not prove that the original person entered truthful information.
+
+Q4. Does a blockchain guarantee the physical scan was real?
+A. No. The blockchain can protect the integrity of the recorded claim, but it cannot independently prove a physical RFID scan happened. Physical hardware, secure device identity, and operational controls would be required for that.
+
+Q5. What happens when the blockchain is offline?
+A. The tracking event and pending transaction remain in MongoDB. The API does not claim confirmation without a successful receipt. The worker can process pending work after connectivity returns. The regression test verified restart/recovery and one successful anchor.
+
+Q6. How do you avoid duplicate scans/anchors?
+A. The scan sequence only accepts the next checkpoint and Mongo unique indexes prevent duplicate shipment/checkpoint records. The contract refuses an already-anchored event ID. The transaction/outbox schema uses unique event ID. Tests checked duplicate scan rejection and exactly one anchor in the recovery test.
+
+Q7. How is authorization enforced?
+A. The frontend hides role-specific actions for usability, but Express checks JWT and role on protected APIs. Operators are scoped to assigned/unassigned shipments; Admin-only operations reject an Operator with 403.
+
+Q8. Why are data and hashes on Mongo if they could be changed?
+A. Mongo is the mutable operational database; the hash is the integrity checkpoint. Verification detects disagreement with the chain. Stronger database permissions, immutable archival, key management, audit controls, and canonical serialization would be added for production.
+
+Q9. Can anyone track a shipment?
+A. Public route does not require login and returns allowlisted fields. It intentionally omits RFID tag, device credentials, and operator assignment. Public visibility is a product choice; only selected details should be exposed.
+
+Q10. Why did you use Next.js rather than Vite?
+A. The existing frontend was implemented with Next.js and the priority was preserving the working product. It uses React and provides the required browser workflow. The difference from the presentation is documented instead of doing a cosmetic migration.
+
+Q11. Is this production-ready?
+A. No. It is an MVP/demo. It has a local chain setup, simulated RFID, local Mongo testing, development credentials, and known gaps such as canonical serialization and database-level immutability. Production needs hardware onboarding, secure secret management, public/private chain decision, monitoring, backups, rate limiting, stronger tests, and deployment hardening.
+
+Q12. What are the three verification statuses?
+A. MATCH requires the recomputed event hash, database hash, on-chain value, successful transaction receipt, and expected contract log to agree. MISMATCH means a confirmed proof conflicts. PENDING means no successful confirmation is available yet. UNAVAILABLE means the chain could not be reached.
+
+Q13. What is the role of the transaction receipt?
+A. It is evidence that a transaction was mined. We verify the receipt status and store transaction hash and block number. The outbox is only marked CONFIRMED after successful receipt processing.
+
+Q14. Is the event history truly immutable?
+A. It is append-only through the application API: no event update/delete route exists. A privileged database administrator could still mutate Mongo directly. So we state this limitation clearly instead of calling it absolute immutability.
+
+Q15. What would you improve next?
+A. First: physical device integration and per-device provisioning; canonical event serialization; production outbox crash recovery/backoff and failure injection; database least-privilege/immutable archival; then full TypeScript/Zod validation, monitoring, deployment, and broader UX tests.
+
+============================================================
+10. FINAL 30-SECOND CONCLUSION
+============================================================
+
+“TraceNet demonstrates a complete shipment event path: product and shipment registration, validated checkpoint scans, MongoDB persistence, asynchronous hash anchoring, receipt-based confirmation, verification, role-based administration, and public tracking. We tested invalid scans and blockchain outage recovery as well as the successful route. This is an MVP on local services with simulated RFID, and we have documented the gaps that must be addressed before production.”
+
+============================================================
+11. FINAL TEAM CHECKLIST
+============================================================
+
+Each person should be able to explain:
+[ ] the project pitch and Hyderabad → Kurnool → Bengaluru route;
+[ ] what is stored in MongoDB versus what is anchored on-chain;
+[ ] how an invalid scan is rejected;
+[ ] why PENDING is not the same as CONFIRMED;
+[ ] MATCH, MISMATCH, NOT_ANCHORED, and UNAVAILABLE;
+[ ] which parts are simulated/local and which limitations remain.
+
+Person 1 should be ready to explain architecture, choices, and setup.
+Person 2 should be ready to explain schemas, APIs, roles, and scan validation.
+Person 3 should be ready to explain Solidity, outbox, receipts, demo, testing, and limitations.
+
+END OF GUIDE

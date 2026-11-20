@@ -37,13 +37,13 @@ export default function DeviceVerifier({ readingHash, signature, expectedSigner 
   return (
     <div className="mt-2 flex items-center gap-2">
       {verified === null ? (
-        <div className="text-sm">Verifying…</div>
+        <div className="text-sm">Verifying...</div>
       ) : verified ? (
         <div className="inline-block px-2 py-1 rounded bg-green-50 text-green-700 text-xs font-semibold">Device verified</div>
       ) : (
         <div className="inline-block px-2 py-1 rounded bg-red-50 text-red-700 text-xs font-semibold">Signature mismatch</div>
       )}
-      <div className="text-xs font-mono break-words">{recovered ?? '—'}</div>
+      <div className="text-xs font-mono break-words">{recovered ?? 'Not available'}</div>
     </div>
   );
 }

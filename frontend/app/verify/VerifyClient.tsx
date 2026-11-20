@@ -6,7 +6,7 @@ import { BrowserMultiFormatReader } from "@zxing/browser";
 export function shorten(addr: string, pre = 8, suf = 6) {
   if (!addr) return '';
   if (addr.length <= pre + suf + 3) return addr;
-  return `${addr.slice(0, pre)}…${addr.slice(-suf)}`;
+  return `${addr.slice(0, pre)}...${addr.slice(-suf)}`;
 }
 
 export default function VerifyClient() {
@@ -120,18 +120,18 @@ export default function VerifyClient() {
       {scanning && (
         <div className="mt-3">
           <video ref={videoRef} style={{ width: 360, height: 240, borderRadius: 8, background: "#000" }} playsInline autoPlay muted />
-          <div className="text-sm text-gray-500 mt-2">Scanning… allow camera access</div>
+          <div className="text-sm text-gray-500 mt-2">Scanning... allow camera access</div>
         </div>
       )}
 
-      {loading && <p className="mt-3">Loading…</p>}
+      {loading && <p className="mt-3">Loading...</p>}
       {error && <p className="mt-3 text-red-600">{error}</p>}
 
       {result && (
         <div className="mt-4 space-y-4">
           <div className="p-3 bg-white rounded shadow-sm">
             <div className="text-sm text-gray-500">Batch</div>
-            <div className="font-mono break-words">{result.batch?.batch_id ?? '—'}</div>
+            <div className="font-mono break-words">{result.batch?.batch_id ?? 'Not available'}</div>
             <div className="text-sm text-gray-500">Created: {result.batch?.created_at ? new Date(result.batch.created_at * 1000).toLocaleString() : 'Unknown'}</div>
           </div>
 
@@ -144,7 +144,7 @@ export default function VerifyClient() {
                 {result.handoffs.map((h:any) => (
                   <li key={h.id} className="p-2 bg-white rounded shadow-sm">
                     <div className="text-sm text-gray-500">{h.time ? new Date(h.time*1000).toLocaleString() : 'Unknown time'}</div>
-                    <div className="mt-1"><strong>{h.from_addr}</strong> → <strong>{h.to_addr}</strong></div>
+                    <div className="mt-1"><strong>{h.from_addr}</strong> to <strong>{h.to_addr}</strong></div>
                   </li>
                 ))}
               </ol>
@@ -177,7 +177,7 @@ export default function VerifyClient() {
                               title="Copy full hash"
                               className="ml-1 px-1 py-0.5 text-xs bg-gray-100 rounded"
                               onClick={() => navigator.clipboard.writeText(s.reading_hash)}
-                            >📋</button>
+                            >Copy</button>
                           </div>
                         </div>
                       </div>
